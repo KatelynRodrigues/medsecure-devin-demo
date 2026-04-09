@@ -100,7 +100,7 @@ class SessionManager:
         severities = sorted({f.severity.value for f in findings})
         tags = (
             ["security-fix", "medsecure-automation"]
-            + [f"cwe-{cwe}" for cwe in cwe_ids]
+            + cwe_ids
             + [f"priority-{findings[0].priority_label}"]
         )
 
