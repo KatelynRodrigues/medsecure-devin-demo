@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Security Dashboard{% endblock %}
+
+{% block content %}
+<div class="metrics-grid" id="metrics-grid">
+    <div class="metric-card"><div class="metric-value" id="m-total">-</div><div class="metric-label">Total Findings</div></div>
+    <div class="metric-card metric-detected"><div class="metric-value" id="m-detected">-</div><div class="metric-label">Detected</div></div>
+    <div class="metric-card metric-triaged"><div class="metric-value" id="m-triaged">-</div><div class="metric-label">Triaged</div></div>
+    <div class="metric-card metric-inpr"><div class="metric-value" id="m-inpr">-</div><div class="metric-label">In PR Review</div></div>
+    <div class="metric-card metric-verified"><div class="metric-value" id="m-verified">-</div><div class="metric-label">Verified</div></div>
+    <div class="metric-card metric-failed"><div class="metric-value" id="m-failed">-</div><div class="metric-label">Failed</div></div>
+</div>
+
+<div class="dashboard-grid">
+    <div class="card">
+        <div class="card-header">
+            <h2>Remediation Progress</h2>
+            <span class="rate" id="rem-rate">0%</span>
+        </div>
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="rem-bar" style="width:0%"></div>
+        </div>
+        <div class="severity-breakdown" id="severity-breakdown"></div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><h2>Workflow Overview</h2></div>
+        <div class="workflow-pipeline">
+            <div class="wf-step" id="wf-detected"><div class="wf-count">0</div><div class="wf-label">Detected</div></div>
+            <div class="wf-arrow">&rarr;</div>
+            <div class="wf-step" id="wf-triaged"><div class="wf-count">0</div><div class="wf-label">Triaged</div></div>
+            <div class="wf-arrow">&rarr;</div>
+            <div class="wf-step" id="wf-inpr"><div class="wf-count">0</div><div class="wf-label">In PR</div></div>
+            <div class="wf-arrow">&rarr;</div>
+            <div class="wf-step" id="wf-merged"><div class="wf-count">0</div><div class="wf-label">Merged</div></div>
+            <div class="wf-arrow">&rarr;</div>
+            <div class="wf-step" id="wf-verified"><div class="wf-count">0</div><div class="wf-label">Verified</div></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Recent Activity</h2>
+            <a href="/activity" class="btn-text">View all</a>
+        </div>
+        <div id="recent-activity" class="activity-list"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadDashboard() {
+    const d = await api('GET', '/summary');
+    document.getElementById('m-total').textContent = d.total_findings;
+    document.getElementById('m-detected').textContent = d.detected || 0;
+    document.getElementById('m-triaged').textContent = d.triaged || 0;
+    document.getElementById('m-inpr').textContent = d.in_pr || 0;
+    document.getElementById('m-verified').textContent = d.verified || 0;
+    document.getElementById('m-failed').textContent = d.failed || 0;
+    document.getElementById('rem-rate').textContent = d.remediation_rate + '%';
+    document.getElementById('rem-bar').style.width = d.remediation_rate + '%';
+    const sb = document.getElementById('severity-breakdown');
+    if (d.severity_counts) {
+        sb.innerHTML = Object.entries(d.severity_counts).map(([k,v]) =>
+            '<span class="sev-chip ' + severityClass(k) + '">' + k + ': ' + v + '</span>'
+        ).join('');
+    }
+    const sc = d.state_counts || {};
+    document.querySelector('#wf-detected .wf-count').textContent = sc.detected || 0;
+    document.querySelector('#wf-triaged .wf-count').textContent = sc.triaged || 0;
+    document.querySelector('#wf-inpr .wf-count').textContent = (sc.in_pr||0) + (sc.pr_commented||0) + (sc.pr_approved||0);
+    document.querySelector('#wf-merged .wf-count').textContent = sc.merged || 0;
+    document.querySelector('#wf-verified .wf-count').textContent = sc.verified || 0;
+    const act = await api('GET', '/activity');
+    const al = document.getElementById('recent-activity');
+    if (act.log && act.log.length > 0) {
+        al.innerHTML = act.log.slice(0, 8).map(e =>
+            '<div class="activity-item"><span class="activity-event">' + escapeHTML(e.event) + '</span><span class="activity-msg">' + escapeHTML(e.message) + '</span></div>'
+        ).join('');
+    } else {
+        al.innerHTML = '<div class="empty-state">No activity yet</div>';
+    }
+}
+loadDashboard();
+</script>
+{% endblock %}

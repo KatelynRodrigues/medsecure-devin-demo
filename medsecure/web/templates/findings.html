@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}CodeQL Findings{% endblock %}
+{% block page_title %}CodeQL Findings{% endblock %}
+
+{% block content %}
+<div class="findings-toolbar">
+    <div class="filter-group">
+        <select id="filter-state" onchange="loadFindings()">
+            <option value="">All States</option>
+            <option value="detected">Detected</option>
+            <option value="triaged">Triaged</option>
+            <option value="in_pr">In PR</option>
+            <option value="verified">Verified</option>
+            <option value="failed">Failed</option>
+        </select>
+        <select id="filter-severity" onchange="loadFindings()">
+            <option value="">All Severities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+        </select>
+    </div>
+    <div class="toolbar-actions">
+        <button class="btn btn-primary" onclick="triageAll()">Triage All Detected</button>
+    </div>
+</div>
+<div id="findings-list" class="findings-list">
+    <div class="loading">Loading findings...</div>
+</div>
+
+<div id="finding-modal" class="modal" style="display:none" onclick="if(event.target===this)closeModal()">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modal-title">Finding Detail</h2>
+            <button onclick="closeModal()" class="btn-close">&times;</button>
+        </div>
+        <div id="modal-body" class="modal-body"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadFindings() {
+    const state = document.getElementById('filter-state').value;
+    const severity = document.getElementById('filter-severity').value;
+    let url = '/findings?';
+    if (state) url += 'state=' + state + '&';
+    if (severity) url += 'severity=' + severity + '&';
+    const d = await api('GET', url);
+    const list = document.getElementById('findings-list');
+    if (!d.findings || d.findings.length === 0) {
+        list.innerHTML = '<div class="empty-state">No findings match the selected filters</div>';
+        return;
+    }
+    list.innerHTML = d.findings.map(f => renderFindingCard(f)).join('');
+}
+
+function renderFindingCard(f) {
+    const actions = getActions(f);
+    return '<div class="finding-card" onclick="showFinding(\'' + f.finding_id + '\')">'
+        + '<div class="finding-header">'
+        + '<span class="badge ' + severityClass(f.severity) + '">' + f.severity.toUpperCase() + '</span>'
+        + '<span class="badge ' + stateClass(f.workflow_state) + '">' + stateLabel(f.workflow_state) + '</span>'
+        + '<span class="finding-cwe">' + escapeHTML(f.cwe_id) + '</span>'
+        + '</div>'
+        + '<div class="finding-title">' + escapeHTML(f.rule_name) + '</div>'
+        + '<div class="finding-location">' + escapeHTML(f.file_path) + ':' + f.start_line + '</div>'
+        + '<div class="finding-msg">' + escapeHTML(f.message).substring(0,120) + '</div>'
+        + '<div class="finding-actions" onclick="event.stopPropagation()">' + actions + '</div>'
+        + '</div>';
+}
+
+function getActions(f) {
+    const s = f.workflow_state;
+    const id = f.finding_id;
+    if (s==='detected') return '<button class="btn btn-sm btn-primary" onclick="triageFinding(\'' + id + '\')">Triage</button>';
+    if (s==='triaged') return '<button class="btn btn-sm btn-success" onclick="fixFinding(\'' + id + '\')">Approve Fix</button>';
+    if (s==='in_pr'||s==='pr_commented') return '<a href="/review" class="btn btn-sm btn-outline">Review PR</a>';
+    if (s==='pr_approved') return '<a href="/review" class="btn btn-sm btn-outline">Ready to Merge</a>';
+    if (s==='merged') return '<button class="btn btn-sm btn-primary" onclick="rescanFinding(\'' + id + '\')">Verify Fix</button>';
+    if (s==='failed') return '<button class="btn btn-sm btn-warning" onclick="retryFinding(\'' + id + '\')">Retry</button>';
+    if (s==='verified') return '<span class="verified-label">Remediated</span>';
+    return '';
+}
+
+async function triageFinding(id) {
+    showToast('Devin triage agent started...', 'info');
+    const r = await api('POST', '/findings/' + id + '/triage');
+    showToast('Triage complete: ' + r.rule_name, 'success');
+    loadFindings(); updateNotifBadges();
+}
+async function fixFinding(id) {
+    showToast('Devin creating fix PR...', 'info');
+    const r = await api('POST', '/findings/' + id + '/fix');
+    showToast('PR #' + r.pr_number + ' created!', 'success');
+    loadFindings(); updateNotifBadges();
+}
+async function rescanFinding(id) {
+    showToast('Running verification scan...', 'info');
+    const r = await api('POST', '/findings/' + id + '/rescan');
+    if (r.rescan_result==='clean') showToast('Verification passed!', 'success');
+    else showToast('Verification failed - vulnerability still present', 'error');
+    loadFindings(); updateNotifBadges();
+}
+async function retryFinding(id) {
+    await api('POST', '/findings/' + id + '/retry');
+    showToast('Finding reset for retry', 'info');
+    loadFindings();
+}
+async function triageAll() {
+    showToast('Triaging all detected findings...', 'info');
+    const r = await api('POST', '/findings/triage-all');
+    showToast('Triaged ' + r.triaged + ' findings', 'success');
+    loadFindings(); updateNotifBadges();
+}
+
+async function showFinding(id) {
+    const f = await api('GET', '/findings/' + id);
+    document.getElementById('modal-title').textContent = f.rule_name;
+    let html = '<div class="detail-grid">';
+    html += '<div class="detail-row"><label>CWE</label><span>' + escapeHTML(f.cwe_id) + '</span></div>';
+    html += '<div class="detail-row"><label>Severity</label><span class="badge ' + severityClass(f.severity) + '">' + f.severity.toUpperCase() + '</span></div>';
+    html += '<div class="detail-row"><label>State</label><span class="badge ' + stateClass(f.workflow_state) + '">' + stateLabel(f.workflow_state) + '</span></div>';
+    html += '<div class="detail-row"><label>File</label><span>' + escapeHTML(f.file_path) + ':' + f.start_line + '</span></div>';
+    html += '<div class="detail-row"><label>Priority</label><span>' + escapeHTML(f.priority_label||'-') + '</span></div>';
+    html += '</div>';
+    html += '<div class="detail-section"><h3>Description</h3><p>' + escapeHTML(f.message) + '</p></div>';
+    if (f.code_snippet) html += '<div class="detail-section"><h3>Code Snippet</h3><pre class="code-block">' + escapeHTML(f.code_snippet) + '</pre></div>';
+    if (f.recommendation) html += '<div class="detail-section"><h3>Recommendation</h3><p>' + escapeHTML(f.recommendation) + '</p></div>';
+    if (f.triage_result) {
+        const t = f.triage_result;
+        html += '<div class="detail-section triage-section"><h3>Triage Result</h3><div class="detail-grid">';
+        html += '<div class="detail-row"><label>Impact</label><span>' + escapeHTML(t.impact_assessment) + '</span></div>';
+        html += '<div class="detail-row"><label>Exploitability</label><span>' + escapeHTML(t.exploitability) + '</span></div>';
+        html += '<div class="detail-row"><label>Data Exposure</label><span>' + escapeHTML(t.data_exposure) + '</span></div>';
+        html += '<div class="detail-row"><label>HIPAA</label><span>' + escapeHTML(t.hipaa_relevance) + '</span></div>';
+        html += '<div class="detail-row"><label>Effort</label><span>' + escapeHTML(t.estimated_effort) + '</span></div>';
+        html += '</div></div>';
+    }
+    if (f.pr_url) html += '<div class="detail-section"><h3>Pull Request</h3><p><a href="' + f.pr_url + '" target="_blank">' + escapeHTML(f.pr_title||'View PR') + '</a></p></div>';
+    document.getElementById('modal-body').innerHTML = html;
+    document.getElementById('finding-modal').style.display = 'flex';
+}
+function closeModal() { document.getElementById('finding-modal').style.display = 'none'; }
+loadFindings();
+</script>
+{% endblock %}

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedSecure - {% block title %}Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="layout">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <span>MedSecure</span>
+                </div>
+                <div class="subtitle">Security Automation</div>
+            </div>
+            <div class="nav-links">
+                <a href="/" class="nav-link{% if request.url.path == '/' %} active{% endif %}">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                    Dashboard
+                </a>
+                <a href="/findings" class="nav-link{% if request.url.path == '/findings' %} active{% endif %}">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    CodeQL Findings
+                </a>
+                <a href="/review" class="nav-link{% if request.url.path == '/review' %} active{% endif %}">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                    PR Review
+                    <span id="pr-count-badge" class="nav-badge" style="display:none">0</span>
+                </a>
+                <a href="/activity" class="nav-link{% if request.url.path == '/activity' %} active{% endif %}">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    Activity
+                    <span id="notif-count-badge" class="nav-badge" style="display:none">0</span>
+                </a>
+            </div>
+            <div class="sidebar-footer">
+                <div class="powered-by">Powered by Devin API v3</div>
+            </div>
+        </nav>
+        <main class="content">
+            <header class="top-bar">
+                <h1 class="page-title">{% block page_title %}Dashboard{% endblock %}</h1>
+                <div class="top-bar-actions">
+                    <div id="notification-bell" class="notif-bell" onclick="toggleNotifPanel()">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+                        <span id="notif-dot" class="notif-dot" style="display:none"></span>
+                    </div>
+                </div>
+            </header>
+            <div id="notification-panel" class="notif-panel" style="display:none">
+                <div class="notif-panel-header">
+                    <strong>Notifications</strong>
+                    <button onclick="markAllRead()" class="btn-text">Mark all read</button>
+                </div>
+                <div id="notif-list" class="notif-list"></div>
+            </div>
+            <div class="page-content">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <div id="toast-container" class="toast-container"></div>
+
+    <script>
+    function escapeHTML(str) {
+        if (!str) return '';
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+
+    async function api(method, path, body) {
+        const opts = { method, headers: {'Content-Type': 'application/json'} };
+        if (body) opts.body = JSON.stringify(body);
+        const r = await fetch('/api' + path, opts);
+        return r.json();
+    }
+
+    function severityClass(s) {
+        return 'severity-' + (s || 'low');
+    }
+
+    function stateLabel(s) {
+        const labels = {
+            detected: 'Detected', triaging: 'Triaging...', triaged: 'Triaged',
+            fixing: 'Fixing...', in_pr: 'In PR', pr_commented: 'PR Commented',
+            pr_approved: 'PR Approved', merging: 'Merging...', merged: 'Merged',
+            rescanning: 'Rescanning...', verified: 'Verified', failed: 'Failed'
+        };
+        return labels[s] || s;
+    }
+
+    function stateClass(s) {
+        if (['verified'].includes(s)) return 'state-verified';
+        if (['failed'].includes(s)) return 'state-failed';
+        if (['in_pr','pr_commented','pr_approved'].includes(s)) return 'state-pr';
+        if (['triaged'].includes(s)) return 'state-triaged';
+        if (['merged'].includes(s)) return 'state-merged';
+        if (['triaging','fixing','merging','rescanning'].includes(s)) return 'state-working';
+        return 'state-detected';
+    }
+
+    function showToast(msg, level) {
+        const c = document.getElementById('toast-container');
+        const t = document.createElement('div');
+        t.className = 'toast toast-' + (level || 'info');
+        t.textContent = msg;
+        c.appendChild(t);
+        setTimeout(() => t.classList.add('toast-show'), 10);
+        setTimeout(() => { t.classList.remove('toast-show'); setTimeout(() => t.remove(), 300); }, 4000);
+    }
+
+    async function updateNotifBadges() {
+        const d = await api('GET', '/summary');
+        const unread = d.unread_notifications || 0;
+        const dot = document.getElementById('notif-dot');
+        const prBadge = document.getElementById('pr-count-badge');
+        if (dot) dot.style.display = unread > 0 ? 'block' : 'none';
+        if (prBadge && d.in_pr !== undefined) {
+            const prCount = (d.in_pr || 0) + (d.pr_approved || 0);
+            prBadge.textContent = prCount;
+            prBadge.style.display = prCount > 0 ? 'inline-flex' : 'none';
+        }
+    }
+
+    function toggleNotifPanel() {
+        const p = document.getElementById('notification-panel');
+        if (p.style.display === 'none') {
+            p.style.display = 'block';
+            loadNotifications();
+        } else {
+            p.style.display = 'none';
+        }
+    }
+
+    async function loadNotifications() {
+        const d = await api('GET', '/notifications');
+        const list = document.getElementById('notif-list');
+        if (!d.notifications || d.notifications.length === 0) {
+            list.innerHTML = '<div class="notif-empty">No notifications</div>';
+            return;
+        }
+        list.innerHTML = d.notifications.slice(0, 20).map(n => {
+            const cls = n.read ? 'notif-item' : 'notif-item notif-unread';
+            const icon = n.level === 'success' ? '&#10003;' : n.level === 'error' ? '&#10007;' : n.level === 'warning' ? '&#9888;' : '&#8505;';
+            return '<div class="' + cls + '" onclick="markRead(\''+ n.id +'\')"><span class="notif-icon notif-' + n.level + '">' + icon + '</span><div class="notif-body"><div class="notif-title">' + escapeHTML(n.title) + '</div><div class="notif-msg">' + escapeHTML(n.message) + '</div></div></div>';
+        }).join('');
+    }
+
+    async function markRead(id) {
+        await api('POST', '/notifications/' + id + '/read');
+        updateNotifBadges();
+        loadNotifications();
+    }
+
+    async function markAllRead() {
+        await api('POST', '/notifications/read-all');
+        updateNotifBadges();
+        loadNotifications();
+    }
+
+    document.addEventListener('click', function(e) {
+        const panel = document.getElementById('notification-panel');
+        const bell = document.getElementById('notification-bell');
+        if (panel && panel.style.display !== 'none' && !panel.contains(e.target) && !bell.contains(e.target)) {
+            panel.style.display = 'none';
+        }
+    });
+
+    updateNotifBadges();
+    setInterval(updateNotifBadges, 10000);
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

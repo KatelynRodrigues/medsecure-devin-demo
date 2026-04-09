@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedSecure Compliance Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; line-height: 1.6; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 24px; }
+        .header h1 { font-size: 28px; margin-bottom: 4px; }
+        .header .subtitle { opacity: 0.8; font-size: 14px; }
+        .header .badge { display: inline-block; background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-top: 8px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; }
+        .stat-card .value { font-size: 36px; font-weight: 700; }
+        .stat-card .label { color: #64748b; font-size: 13px; margin-top: 4px; }
+        .rate-card { background: white; border-radius: 12px; padding: 30px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; margin-bottom: 24px; }
+        .rate-ring { width: 160px; height: 160px; margin: 0 auto 16px; position: relative; }
+        .rate-ring .rate-value { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 42px; font-weight: 700; }
+        .rate-ring svg { transform: rotate(-90deg); }
+        .section { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px; }
+        .section h2 { font-size: 18px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #f1f5f9; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th { text-align: left; padding: 10px 12px; background: #f8fafc; color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        td { padding: 10px 12px; border-top: 1px solid #f1f5f9; }
+        tr:hover td { background: #f8fafc; }
+        .severity-badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; color: white; }
+        .severity-critical { background: #dc2626; }
+        .severity-high { background: #ea580c; }
+        .severity-medium { background: #ca8a04; }
+        .severity-low { background: #6b7280; }
+        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+        .status-completed { background: #dcfce7; color: #166534; }
+        .status-running, .status-dispatched { background: #dbeafe; color: #1e40af; }
+        .status-failed { background: #fee2e2; color: #991b1b; }
+        .status-pending { background: #f1f5f9; color: #475569; }
+        .status-needs_review { background: #fef3c7; color: #92400e; }
+        .status-exit { background: #dcfce7; color: #166534; }
+        .status-error { background: #fee2e2; color: #991b1b; }
+        .status-suspended { background: #fef3c7; color: #92400e; }
+        a { color: #2563eb; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .two-col { display: grid; grid-template-columns: 1fr 2fr; gap: 24px; }
+        .footer { text-align: center; padding: 20px; color: #94a3b8; font-size: 12px; }
+        code { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; font-size: 13px; }
+        @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>MedSecure Compliance Dashboard</h1>
+            <div class="subtitle">Automated Security Remediation Report</div>
+            <div class="badge">Report ID: {{ report.report_id }}</div>
+            <div class="badge">Generated: {{ report.generated_at.strftime('%Y-%m-%d %H:%M UTC') }}</div>
+            <div class="badge">HIPAA Compliance</div>
+        </div>
+
+        <div class="two-col">
+            <div>
+                <div class="rate-card">
+                    <h3 style="margin-bottom: 16px; color: #64748b;">Remediation Rate</h3>
+                    <div class="rate-ring">
+                        <svg width="160" height="160" viewBox="0 0 160 160">
+                            <circle cx="80" cy="80" r="70" fill="none" stroke="#f1f5f9" stroke-width="12"/>
+                            <circle cx="80" cy="80" r="70" fill="none"
+                                stroke="{% if remediation_rate >= 80 %}#16a34a{% elif remediation_rate >= 50 %}#ca8a04{% else %}#dc2626{% endif %}"
+                                stroke-width="12"
+                                stroke-dasharray="{{ (remediation_rate / 100) * 440 }} 440"
+                                stroke-linecap="round"/>
+                        </svg>
+                        <div class="rate-value" style="color: {% if remediation_rate >= 80 %}#16a34a{% elif remediation_rate >= 50 %}#ca8a04{% else %}#dc2626{% endif %}">
+                            {{ "%.0f"|format(remediation_rate) }}%
+                        </div>
+                    </div>
+                    {% if mttr is not none %}
+                    <div style="color: #64748b; font-size: 13px;">
+                        Mean Time to Remediation: <strong>{{ "%.1f"|format(mttr) }}h</strong>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            <div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="value">{{ report.total_findings }}</div>
+                        <div class="label">Total Findings</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value" style="color: #16a34a;">{{ report.remediated }}</div>
+                        <div class="label">Remediated</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value" style="color: #2563eb;">{{ report.in_progress }}</div>
+                        <div class="label">In Progress</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value" style="color: #dc2626;">{{ report.failed }}</div>
+                        <div class="label">Failed</div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>Scan Summary</h2>
+                    <table>
+                        <tr><td><strong>Scan ID</strong></td><td><code>{{ report.scan_summary.scan_id }}</code></td></tr>
+                        <tr><td><strong>Scan Time</strong></td><td>{{ report.scan_summary.scan_time.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
+                        <tr>
+                            <td><strong>By Severity</strong></td>
+                            <td>
+                                <span class="severity-badge severity-critical">{{ report.scan_summary.critical }} Critical</span>
+                                <span class="severity-badge severity-high">{{ report.scan_summary.high }} High</span>
+                                <span class="severity-badge severity-medium">{{ report.scan_summary.medium }} Medium</span>
+                                <span class="severity-badge severity-low">{{ report.scan_summary.low }} Low</span>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Devin Remediation Sessions</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Session</th>
+                        <th>Status</th>
+                        <th>Findings</th>
+                        <th>Confidence</th>
+                        <th>Pull Request</th>
+                        <th>Review Needed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in sessions %}
+                    <tr>
+                        <td><a href="{{ s.url }}">{{ s.id[:24] }}...</a></td>
+                        <td><span class="status-badge status-{{ s.status }}">{{ s.status }}{% if s.detail %} ({{ s.detail }}){% endif %}</span></td>
+                        <td>{{ s.findings_count }}</td>
+                        <td>{{ s.confidence }}</td>
+                        <td>{% if s.pr_url %}<a href="{{ s.pr_url }}">{{ s.pr_state or 'View PR' }}</a>{% else %}—{% endif %}</td>
+                        <td>{% if s.needs_review %}<span style="color: #ca8a04;">Yes</span>{% else %}<span style="color: #16a34a;">No</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% for severity_name in ['critical', 'high', 'medium', 'low'] %}
+        {% if findings_by_severity[severity_name] %}
+        <div class="section">
+            <h2>
+                <span class="severity-badge severity-{{ severity_name }}">{{ severity_name|upper }}</span>
+                Findings ({{ findings_by_severity[severity_name]|length }})
+            </h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>CWE</th>
+                        <th>Rule</th>
+                        <th>File</th>
+                        <th>Line</th>
+                        <th>Status</th>
+                        <th>PR</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in findings_by_severity[severity_name] %}
+                    <tr>
+                        <td><code>{{ f.cwe }}</code></td>
+                        <td>{{ f.rule }}</td>
+                        <td><code>{{ f.file }}</code></td>
+                        <td>{{ f.line }}</td>
+                        <td><span class="status-badge status-{{ f.status }}">{{ f.status }}</span></td>
+                        <td>{% if f.pr_url %}<a href="{{ f.pr_url }}">View PR</a>{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        {% endfor %}
+
+        <div class="footer">
+            <p>MedSecure Automated Security Remediation Pipeline</p>
+            <p>Powered by <a href="https://devin.ai">Devin AI</a> | HIPAA Compliance Reporting</p>
+        </div>
+    </div>
+</body>
+</html>

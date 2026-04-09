@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Activity{% endblock %}
+{% block page_title %}Activity Log{% endblock %}
+
+{% block content %}
+<div class="activity-page">
+    <div class="card">
+        <div class="card-header">
+            <h2>All Notifications</h2>
+            <button class="btn btn-sm btn-outline" onclick="markAllRead();loadActivityPage();">Mark all read</button>
+        </div>
+        <div id="all-notifications" class="notif-full-list"></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h2>Event Timeline</h2></div>
+        <div id="event-timeline" class="timeline"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadActivityPage() {
+    const nd = await api('GET', '/notifications');
+    const nl = document.getElementById('all-notifications');
+    if (!nd.notifications || nd.notifications.length===0) {
+        nl.innerHTML = '<div class="empty-state">No notifications yet</div>';
+    } else {
+        nl.innerHTML = nd.notifications.map(n => {
+            const cls = n.read ? 'notif-item' : 'notif-item notif-unread';
+            const icon = n.level==='success' ? '&#10003;' : n.level==='error' ? '&#10007;' : n.level==='warning' ? '&#9888;' : '&#8505;';
+            return '<div class="' + cls + '"><span class="notif-icon notif-' + n.level + '">' + icon + '</span><div class="notif-body"><div class="notif-title">' + escapeHTML(n.title) + '</div><div class="notif-msg">' + escapeHTML(n.message) + '</div><div class="notif-time">' + n.timestamp + '</div></div></div>';
+        }).join('');
+    }
+    const ad = await api('GET', '/activity');
+    const tl = document.getElementById('event-timeline');
+    if (!ad.log || ad.log.length===0) {
+        tl.innerHTML = '<div class="empty-state">No events yet</div>';
+    } else {
+        tl.innerHTML = ad.log.map(e => {
+            return '<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-content"><div class="timeline-event">' + escapeHTML(e.event) + '</div><div class="timeline-msg">' + escapeHTML(e.message) + '</div><div class="timeline-time">' + e.timestamp + '</div></div></div>';
+        }).join('');
+    }
+}
+loadActivityPage();
+</script>
+{% endblock %}
