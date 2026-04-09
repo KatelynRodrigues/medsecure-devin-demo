@@ -130,6 +130,38 @@ medsecure/
 | Audit asks "what's the status?" → scramble | Real-time compliance dashboard |
 | Average remediation: weeks/months | Average remediation: hours |
 
+## Interactive Web Dashboard
+
+The interactive dashboard lets you walk through the full vulnerability remediation workflow step-by-step:
+
+```bash
+# 1. Install the package
+pip install -e .
+
+# 2. Start the web server
+uvicorn medsecure.web.app:app --host 0.0.0.0 --port 8000
+
+# 3. Open http://localhost:8000 in your browser
+```
+
+### Pages
+
+| Page | URL | Description |
+|------|-----|-------------|
+| Dashboard | `/` | Metrics overview, remediation progress, workflow pipeline |
+| CodeQL Findings | `/findings` | All detected vulnerabilities — triage and approve fixes |
+| PR Review | `/review` | PRs ready for review — comment, approve, and merge |
+| Activity | `/activity` | Full notification center and event timeline |
+
+### Workflow
+
+1. **Dashboard** loads with 12 mock CodeQL findings across 4 severity levels
+2. Go to **CodeQL Findings** → click **Triage** on any finding (or "Triage All Detected")
+3. After triage completes, click **Approve Fix** → Devin creates a PR
+4. Go to **PR Review** → see the PR, leave comments (Devin responds), then **Approve** and **Merge**
+5. After merge, Devin rescans to verify the vulnerability is patched
+6. Check **Activity** for the full event log
+
 ## Running Tests
 
 ```bash
