@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% set active_page = "findings" %}
+{% block title %}Findings Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Vulnerability Findings Portal</h2>
+    <p>Browse, filter, and manage all security findings across the remediation lifecycle</p>
+</div>
+
+<div id="findingsContent">
+    <div class="loading"><div class="spinner"></div> Loading findings...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allFindings = [];
+let currentFilter = 'all';
+let currentSeverity = 'all';
+
+async function loadFindings() {
+    const data = await fetchJSON('/api/findings');
+    allFindings = data.findings;
+    renderFilters(data.groups);
+    renderFindings(allFindings);
+}
+
+function renderFilters(groups) {
+    const total = allFindings.length;
+    const filtersHTML = `
+        <div class="filters" id="statusFilters">
+            <button class="filter-btn active" onclick="filterByStatus('all')">
+                All <span class="count">(${total})</span>
+            </button>
+            <button class="filter-btn" onclick="filterByStatus('triaged')">
+                🔍 Triaged <span class="count">(${groups.triaged})</span>
+            </button>
+            <button class="filter-btn" onclick="filterByStatus('in_progress')">
+                ⚙️ In Progress <span class="count">(${groups.in_progress})</span>
+            </button>
+            <button class="filter-btn" onclick="filterByStatus('in_pr')">
+                🔀 In PR <span class="count">(${groups.in_pr})</span>
+            </button>
+            <button class="filter-btn" onclick="filterByStatus('completed')">
+                ✅ Completed <span class="count">(${groups.completed})</span>
+            </button>
+            <button class="filter-btn" onclick="filterByStatus('failed')">
+                ❌ Failed <span class="count">(${groups.failed})</span>
+            </button>
+        </div>
+        <div class="filters" id="severityFilters">
+            <button class="filter-btn active" onclick="filterBySeverity('all')">All Severities</button>
+            <button class="filter-btn" onclick="filterBySeverity('critical')">Critical</button>
+            <button class="filter-btn" onclick="filterBySeverity('high')">High</button>
+            <button class="filter-btn" onclick="filterBySeverity('medium')">Medium</button>
+            <button class="filter-btn" onclick="filterBySeverity('low')">Low</button>
+        </div>
+    `;
+
+    const container = document.getElementById('findingsContent');
+    container.innerHTML = filtersHTML + '<div id="findingsTable"></div>';
+}
+
+function filterByStatus(status) {
+    currentFilter = status;
+    applyFilters();
+    document.querySelectorAll('#statusFilters .filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent.toLowerCase().includes(status === 'all' ? 'all' : status.replace('_', ' ')));
+    });
+}
+
+function filterBySeverity(severity) {
+    currentSeverity = severity;
+    applyFilters();
+    document.querySelectorAll('#severityFilters .filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent.toLowerCase().includes(severity));
+    });
+}
+
+function applyFilters() {
+    let filtered = [...allFindings];
+
+    if (currentFilter !== 'all') {
+        filtered = filtered.filter(f => {
+            if (currentFilter === 'triaged') return f.status === 'pending';
+            if (currentFilter === 'in_progress') return f.status === 'dispatched' || f.status === 'running';
+            if (currentFilter === 'in_pr') return f.pr_url !== null;
+            if (currentFilter === 'completed') return f.status === 'completed';
+            if (currentFilter === 'failed') return f.status === 'failed' || f.status === 'needs_review';
+            return true;
+        });
+    }
+
+    if (currentSeverity !== 'all') {
+        filtered = filtered.filter(f => f.severity === currentSeverity);
+    }
+
+    renderFindings(filtered);
+}
+
+function renderFindings(findings) {
+    const container = document.getElementById('findingsTable');
+    if (findings.length === 0) {
+        container.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">No findings match the current filters</div>';
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="card" style="padding:0;overflow:hidden">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Priority</th>
+                        <th>Severity</th>
+                        <th>CWE</th>
+                        <th>Vulnerability</th>
+                        <th>File</th>
+                        <th>Line</th>
+                        <th>Status</th>
+                        <th>Session</th>
+                        <th>PR</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${findings.map(f => `
+                        <tr style="cursor:pointer" onclick="showFindingDetail('${f.finding_id}')">
+                            <td><strong>${f.priority_label}</strong></td>
+                            <td>${severityBadge(f.severity)}</td>
+                            <td><span class="cwe-tag">${f.cwe_id}</span></td>
+                            <td style="max-width:250px">
+                                <div style="font-weight:500">${f.rule_name}</div>
+                                <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:250px">${f.message}</div>
+                            </td>
+                            <td><span class="file-path">${f.file_path.split('/').pop()}</span></td>
+                            <td>${f.start_line}</td>
+                            <td>${statusBadge(f.status)}</td>
+                            <td>${f.session_id ? '<span style="font-family:monospace;font-size:12px;color:var(--accent-cyan)">' + f.session_id.substring(0, 16) + '...</span>' : '—'}</td>
+                            <td>${f.pr_url ? '<a href="' + f.pr_url + '" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent-purple)">View PR</a>' : '—'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+loadFindings();
+</script>
+{% endblock %}

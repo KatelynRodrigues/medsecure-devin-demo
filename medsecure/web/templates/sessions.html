@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% set active_page = "sessions" %}
+{% block title %}Devin Sessions{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Devin Remediation Sessions</h2>
+    <p>Track AI-powered security fix sessions and their pull requests</p>
+</div>
+
+<div id="sessionsContent">
+    <div class="loading"><div class="spinner"></div> Loading sessions...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadSessions() {
+    const data = await fetchJSON('/api/sessions');
+    const sessions = data.sessions;
+
+    const statusCounts = {};
+    sessions.forEach(s => {
+        statusCounts[s.status] = (statusCounts[s.status] || 0) + 1;
+    });
+
+    const totalFindings = sessions.reduce((sum, s) => sum + s.finding_count, 0);
+    const withPRs = sessions.filter(s => s.pr_url).length;
+
+    document.getElementById('sessionsContent').innerHTML = `
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value">${sessions.length}</div>
+                <div class="metric-label">Total Sessions</div>
+            </div>
+            <div class="metric-card success">
+                <div class="metric-value">${statusCounts['exit'] || 0}</div>
+                <div class="metric-label">Completed</div>
+            </div>
+            <div class="metric-card info">
+                <div class="metric-value">${statusCounts['running'] || 0}</div>
+                <div class="metric-label">Running</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">${withPRs}</div>
+                <div class="metric-label">PRs Created</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">${totalFindings}</div>
+                <div class="metric-label">Findings Covered</div>
+            </div>
+        </div>
+
+        <div id="sessionsList">
+            ${sessions.map(s => renderSessionCard(s)).join('')}
+        </div>
+    `;
+}
+
+function renderSessionCard(session) {
+    const statusClass = session.status === 'exit' ? 'completed' : session.status;
+
+    return `
+        <div class="session-card">
+            <div class="session-header">
+                <div>
+                    <div class="session-id">${session.session_id}</div>
+                    <div style="margin-top:4px">${statusBadge(session.status)}
+                        ${session.status_detail ? `<span style="font-size:12px;color:var(--text-muted);margin-left:8px">${session.status_detail}</span>` : ''}
+                    </div>
+                </div>
+                <div style="text-align:right">
+                    <a href="${session.session_url}" target="_blank" style="color:var(--accent-blue);font-size:13px;text-decoration:none">Open in Devin →</a>
+                    ${session.pr_url ? `<br><a href="${session.pr_url}" target="_blank" style="color:var(--accent-purple);font-size:13px;text-decoration:none;margin-top:4px;display:inline-block">View PR →</a>` : ''}
+                </div>
+            </div>
+            <div class="session-meta">
+                <span>📋 ${session.finding_count} findings</span>
+                <span>🕐 Created ${new Date(session.created_at).toLocaleString()}</span>
+                <span>🔄 Updated ${new Date(session.updated_at).toLocaleString()}</span>
+            </div>
+            <div class="session-cwes">
+                ${session.cwes.map(c => `<span class="cwe-tag">${c}</span>`).join('')}
+                ${session.severities.map(s => severityBadge(s)).join(' ')}
+            </div>
+            ${session.structured_output ? `
+                <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">Structured Output</div>
+                    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px">
+                        <span>Findings fixed: <strong>${session.structured_output.findings_fixed?.length || 0}</strong></span>
+                        <span>Confidence: <strong>${session.structured_output.fix_confidence || 'N/A'}</strong></span>
+                        <span>Tests added: <strong>${session.structured_output.tests_added ? 'Yes' : 'No'}</strong></span>
+                        <span>Manual review: <strong>${session.structured_output.requires_manual_review ? 'Yes' : 'No'}</strong></span>
+                    </div>
+                    ${session.structured_output.notes ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:6px">${session.structured_output.notes}</div>` : ''}
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+loadSessions();
+</script>
+{% endblock %}

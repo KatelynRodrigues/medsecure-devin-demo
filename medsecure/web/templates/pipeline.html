@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% set active_page = "pipeline" %}
+{% block title %}Pipeline View{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+        <h2>Pipeline Execution View</h2>
+        <p>Watch Devin work through vulnerability identification, mitigation, and remediation</p>
+    </div>
+    <button class="btn-primary" onclick="rerunPipeline()" id="rerunBtn">
+        🔄 Re-run Pipeline
+    </button>
+</div>
+
+<div id="pipelineContent">
+    <div class="loading"><div class="spinner"></div> Loading pipeline...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PHASES = [
+    { id: 'identification', icon: '🔍', name: 'Identification', desc: 'CodeQL scans codebase for vulnerabilities' },
+    { id: 'triage', icon: '📋', name: 'Triage', desc: 'Classify, deduplicate, and prioritize findings' },
+    { id: 'mitigation', icon: '🤖', name: 'Mitigation', desc: 'Create Devin sessions to fix each finding' },
+    { id: 'remediation', icon: '🔧', name: 'Remediation', desc: 'Monitor sessions and collect PRs' },
+    { id: 'complete', icon: '✅', name: 'Complete', desc: 'All sessions finished, report generated' },
+];
+
+async function loadPipeline() {
+    const data = await fetchJSON('/api/pipeline');
+    const summary = await fetchJSON('/api/summary');
+
+    const currentPhaseIdx = PHASES.findIndex(p => p.id === data.phase);
+
+    document.getElementById('pipelineContent').innerHTML = `
+        <!-- Phase Indicators -->
+        <div class="pipeline-phases">
+            ${PHASES.map((phase, i) => {
+                let stateClass = '';
+                if (i < currentPhaseIdx || data.phase === 'complete') stateClass = 'completed';
+                else if (i === currentPhaseIdx) stateClass = 'active';
+
+                return `
+                    <div class="pipeline-phase ${stateClass}">
+                        <div class="phase-icon">${phase.icon}</div>
+                        <div class="phase-name">${phase.name}</div>
+                        <div class="phase-desc">${phase.desc}</div>
+                        <div class="phase-status">
+                            ${stateClass === 'completed' ? '● Complete' : stateClass === 'active' ? '● Active' : '○ Pending'}
+                        </div>
+                        ${i < PHASES.length - 1 ? '<div class="pipeline-arrow">→</div>' : ''}
+                    </div>
+                `;
+            }).join('')}
+        </div>
+
+        <div class="dashboard-grid">
+            <!-- Pipeline Summary -->
+            <div class="card">
+                <div class="card-header"><h3>Pipeline Status</h3></div>
+                <div class="detail-grid">
+                    <span class="detail-label">Current Phase</span>
+                    <span class="detail-value">${statusBadge(data.phase)}</span>
+                    <span class="detail-label">Total Findings</span>
+                    <span class="detail-value">${summary.total_findings}</span>
+                    <span class="detail-label">Sessions Created</span>
+                    <span class="detail-value">${summary.total_sessions}</span>
+                    <span class="detail-label">Remediation Rate</span>
+                    <span class="detail-value" style="color:var(--accent-green);font-weight:700">${summary.remediation_rate.toFixed(0)}%</span>
+                    <span class="detail-label">Scan ID</span>
+                    <span class="detail-value" style="font-family:monospace;font-size:12px">${summary.scan_id || 'N/A'}</span>
+                </div>
+            </div>
+
+            <!-- Status Breakdown -->
+            <div class="card">
+                <div class="card-header"><h3>Finding Status Breakdown</h3></div>
+                <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+                    ${buildStatusRow('Completed', summary.status_counts.completed || 0, summary.total_findings, 'var(--accent-green)')}
+                    ${buildStatusRow('Running', summary.status_counts.running || 0, summary.total_findings, 'var(--accent-blue)')}
+                    ${buildStatusRow('Dispatched', summary.status_counts.dispatched || 0, summary.total_findings, 'var(--accent-cyan)')}
+                    ${buildStatusRow('Pending', summary.status_counts.pending || 0, summary.total_findings, 'var(--status-pending)')}
+                    ${buildStatusRow('Failed', summary.status_counts.failed || 0, summary.total_findings, 'var(--accent-red)')}
+                    ${buildStatusRow('Needs Review', summary.status_counts.needs_review || 0, summary.total_findings, 'var(--accent-orange)')}
+                </div>
+            </div>
+
+            <!-- Execution Log -->
+            <div class="card full-width">
+                <div class="card-header"><h3>Pipeline Execution Log</h3></div>
+                <div class="pipeline-log">
+                    ${data.log.map(entry => `
+                        <div class="log-entry">
+                            <span class="log-timestamp">${new Date(entry.timestamp).toLocaleTimeString()}</span>
+                            <span class="log-phase ${entry.phase}">${entry.phase}</span>
+                            <span class="log-message">${entry.message}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function buildStatusRow(label, count, total, color) {
+    const pct = total > 0 ? (count / total) * 100 : 0;
+    return `
+        <div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                <span style="font-size:13px">${label}</span>
+                <span style="font-size:13px;color:var(--text-muted)">${count} / ${total}</span>
+            </div>
+            <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+                <div style="height:100%;width:${pct}%;background:${color};border-radius:3px;transition:width 0.5s"></div>
+            </div>
+        </div>
+    `;
+}
+
+async function rerunPipeline() {
+    const btn = document.getElementById('rerunBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Running...';
+
+    document.getElementById('pipelineContent').innerHTML = '<div class="loading"><div class="spinner"></div> Running pipeline...</div>';
+
+    await fetch('/api/pipeline/run', { method: 'POST' });
+    await loadPipeline();
+
+    btn.disabled = false;
+    btn.textContent = '🔄 Re-run Pipeline';
+}
+
+loadPipeline();
+</script>
+{% endblock %}
