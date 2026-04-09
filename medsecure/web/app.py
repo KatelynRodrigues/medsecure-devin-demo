@@ -39,22 +39,22 @@ app.include_router(api_router, prefix="/api")
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request) -> HTMLResponse:
     """Main dashboard with metrics and workflow overview."""
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="dashboard.html")
 
 
 @app.get("/findings", response_class=HTMLResponse)
 async def findings_page(request: Request) -> HTMLResponse:
     """CodeQL findings with triage and fix actions."""
-    return templates.TemplateResponse("findings.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="findings.html")
 
 
 @app.get("/review", response_class=HTMLResponse)
 async def review_page(request: Request) -> HTMLResponse:
     """PRs ready for review with comment and merge actions."""
-    return templates.TemplateResponse("review.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="review.html")
 
 
 @app.get("/activity", response_class=HTMLResponse)
 async def activity_page(request: Request) -> HTMLResponse:
     """Activity log and notification center."""
-    return templates.TemplateResponse("activity.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="activity.html")
