@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}PR Review{% endblock %}
+{% block page_title %}PRs Ready for Review{% endblock %}
+
+{% block content %}
+<div id="prs-container"><div class="loading">Loading PRs...</div></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadPRs() {
+    const d = await api('GET', '/prs');
+    const container = document.getElementById('prs-container');
+    if (!d.prs || d.prs.length === 0) {
+        container.innerHTML = '<div class="empty-state"><h3>No PRs awaiting review</h3><p>Triage and fix findings from the <a href="/findings">CodeQL Findings</a> page to generate PRs.</p></div>';
+        return;
+    }
+    container.innerHTML = d.prs.map(f => renderPRCard(f)).join('');
+}
+
+function renderPRCard(f) {
+    const id = f.finding_id;
+    let html = '<div class="pr-card">';
+    html += '<div class="pr-card-header">';
+    html += '<div class="pr-meta">';
+    html += '<span class="badge ' + severityClass(f.severity) + '">' + f.severity.toUpperCase() + '</span>';
+    html += '<span class="badge ' + stateClass(f.workflow_state) + '">' + stateLabel(f.workflow_state) + '</span>';
+    html += '<span class="pr-cwe">' + escapeHTML(f.cwe_id) + '</span>';
+    html += '</div>';
+    html += '<a href="' + (f.pr_url||'#') + '" target="_blank" class="btn btn-sm btn-outline">View on GitHub</a>';
+    html += '</div>';
+    html += '<h3 class="pr-title">' + escapeHTML(f.pr_title||f.rule_name) + '</h3>';
+    html += '<div class="pr-info">PR #' + f.pr_number + ' &middot; ' + escapeHTML(f.file_path) + ':' + f.start_line + '</div>';
+    html += '<div class="pr-comments" id="comments-' + id + '">';
+    if (f.pr_comments && f.pr_comments.length > 0) {
+        html += f.pr_comments.map(c => {
+            const cls = c.author==='devin' ? 'comment-devin' : 'comment-user';
+            const label = c.author==='devin' ? 'Devin AI' : 'You';
+            return '<div class="comment ' + cls + '"><div class="comment-header"><strong>' + label + '</strong></div><div class="comment-body">' + escapeHTML(c.body) + '</div></div>';
+        }).join('');
+    }
+    html += '</div>';
+    html += '<div class="pr-comment-form">';
+    html += '<textarea id="comment-input-' + id + '" class="comment-input" placeholder="Leave a comment for Devin..." rows="2"></textarea>';
+    html += '<button class="btn btn-sm btn-primary" onclick="postComment(\'' + id + '\')">Comment</button>';
+    html += '</div>';
+    html += '<div class="pr-actions">';
+    if (f.workflow_state==='in_pr'||f.workflow_state==='pr_commented') {
+        html += '<button class="btn btn-success" onclick="approvePR(\'' + id + '\')">Approve PR</button>';
+    }
+    if (f.workflow_state==='pr_approved') {
+        html += '<button class="btn btn-primary" onclick="mergePR(\'' + id + '\')">Merge PR</button>';
+    }
+    html += '</div></div>';
+    return html;
+}
+
+async function postComment(id) {
+    const input = document.getElementById('comment-input-' + id);
+    const comment = input.value.trim();
+    if (!comment) return;
+    input.value = '';
+    showToast('Sending comment to Devin...', 'info');
+    await api('POST', '/findings/' + id + '/comment', { comment });
+    showToast('Devin responded!', 'success');
+    loadPRs(); updateNotifBadges();
+}
+async function approvePR(id) {
+    await api('POST', '/findings/' + id + '/approve');
+    showToast('PR approved! Ready to merge.', 'success');
+    loadPRs(); updateNotifBadges();
+}
+async function mergePR(id) {
+    showToast('Merging PR...', 'info');
+    await api('POST', '/findings/' + id + '/merge');
+    showToast('PR merged! Go to Findings to trigger verification scan.', 'success');
+    loadPRs(); updateNotifBadges();
+}
+loadPRs();
+</script>
+{% endblock %}

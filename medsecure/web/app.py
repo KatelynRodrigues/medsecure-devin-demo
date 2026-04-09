@@ -1,7 +1,7 @@
 """FastAPI web dashboard for MedSecure security automation.
 
-Provides a browser-based UI to explore vulnerability identification,
-mitigation, remediation phases and manage finding lifecycle.
+Provides an interactive UI for the full remediation workflow:
+  CodeQL scan -> Triage -> Fix -> PR Review -> Merge -> Rescan
 """
 
 from __future__ import annotations
@@ -24,8 +24,8 @@ _STATIC_DIR = _WEB_DIR / "static"
 
 app = FastAPI(
     title="MedSecure Security Dashboard",
-    description="Vulnerability remediation tracking and Devin session management",
-    version="0.1.0",
+    description="Interactive vulnerability remediation with Devin AI",
+    version="0.2.0",
 )
 
 # Mount static files and templates
@@ -38,23 +38,23 @@ app.include_router(api_router, prefix="/api")
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request) -> HTMLResponse:
-    """Serve the main dashboard page."""
+    """Main dashboard with metrics and workflow overview."""
     return templates.TemplateResponse("dashboard.html", {"request": request})
 
 
 @app.get("/findings", response_class=HTMLResponse)
 async def findings_page(request: Request) -> HTMLResponse:
-    """Serve the findings portal page."""
+    """CodeQL findings with triage and fix actions."""
     return templates.TemplateResponse("findings.html", {"request": request})
 
 
-@app.get("/sessions", response_class=HTMLResponse)
-async def sessions_page(request: Request) -> HTMLResponse:
-    """Serve the sessions page."""
-    return templates.TemplateResponse("sessions.html", {"request": request})
+@app.get("/review", response_class=HTMLResponse)
+async def review_page(request: Request) -> HTMLResponse:
+    """PRs ready for review with comment and merge actions."""
+    return templates.TemplateResponse("review.html", {"request": request})
 
 
-@app.get("/pipeline", response_class=HTMLResponse)
-async def pipeline_page(request: Request) -> HTMLResponse:
-    """Serve the pipeline view page."""
-    return templates.TemplateResponse("pipeline.html", {"request": request})
+@app.get("/activity", response_class=HTMLResponse)
+async def activity_page(request: Request) -> HTMLResponse:
+    """Activity log and notification center."""
+    return templates.TemplateResponse("activity.html", {"request": request})

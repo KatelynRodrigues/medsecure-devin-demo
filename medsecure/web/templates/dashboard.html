@@ -1,147 +1,88 @@
 {% extends "base.html" %}
-{% set active_page = "dashboard" %}
 {% block title %}Dashboard{% endblock %}
+{% block page_title %}Security Dashboard{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h2>Security Remediation Dashboard</h2>
-    <p>Real-time overview of CodeQL finding remediation via Devin AI</p>
+<div class="metrics-grid" id="metrics-grid">
+    <div class="metric-card"><div class="metric-value" id="m-total">-</div><div class="metric-label">Total Findings</div></div>
+    <div class="metric-card metric-detected"><div class="metric-value" id="m-detected">-</div><div class="metric-label">Detected</div></div>
+    <div class="metric-card metric-triaged"><div class="metric-value" id="m-triaged">-</div><div class="metric-label">Triaged</div></div>
+    <div class="metric-card metric-inpr"><div class="metric-value" id="m-inpr">-</div><div class="metric-label">In PR Review</div></div>
+    <div class="metric-card metric-verified"><div class="metric-value" id="m-verified">-</div><div class="metric-label">Verified</div></div>
+    <div class="metric-card metric-failed"><div class="metric-value" id="m-failed">-</div><div class="metric-label">Failed</div></div>
 </div>
 
-<div id="dashboardContent">
-    <div class="loading"><div class="spinner"></div> Loading dashboard...</div>
-</div>
+<div class="dashboard-grid">
+    <div class="card">
+        <div class="card-header">
+            <h2>Remediation Progress</h2>
+            <span class="rate" id="rem-rate">0%</span>
+        </div>
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="rem-bar" style="width:0%"></div>
+        </div>
+        <div class="severity-breakdown" id="severity-breakdown"></div>
+    </div>
 
+    <div class="card">
+        <div class="card-header"><h2>Workflow Overview</h2></div>
+        <div class="workflow-pipeline">
+            <div class="wf-step" id="wf-detected"><div class="wf-count">0</div><div class="wf-label">Detected</div></div>
+            <div class="wf-arrow">&rarr;</div>
+            <div class="wf-step" id="wf-triaged"><div class="wf-count">0</div><div class="wf-label">Triaged</div></div>
+            <div class="wf-arrow">&rarr;</div>
+            <div class="wf-step" id="wf-inpr"><div class="wf-count">0</div><div class="wf-label">In PR</div></div>
+            <div class="wf-arrow">&rarr;</div>
+            <div class="wf-step" id="wf-merged"><div class="wf-count">0</div><div class="wf-label">Merged</div></div>
+            <div class="wf-arrow">&rarr;</div>
+            <div class="wf-step" id="wf-verified"><div class="wf-count">0</div><div class="wf-label">Verified</div></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Recent Activity</h2>
+            <a href="/activity" class="btn-text">View all</a>
+        </div>
+        <div id="recent-activity" class="activity-list"></div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 async function loadDashboard() {
-    const data = await fetchJSON('/api/summary');
-    const findings = await fetchJSON('/api/findings');
-    const sessions = await fetchJSON('/api/sessions');
-
-    const circumference = 2 * Math.PI * 54;
-    const offset = circumference - (data.remediation_rate / 100) * circumference;
-
-    document.getElementById('dashboardContent').innerHTML = `
-        <!-- Metrics Row -->
-        <div class="metrics-grid">
-            <div class="metric-card">
-                <div class="metric-value">${data.total_findings}</div>
-                <div class="metric-label">Total Findings</div>
-            </div>
-            <div class="metric-card success">
-                <div class="metric-value">${data.remediated}</div>
-                <div class="metric-label">Remediated</div>
-            </div>
-            <div class="metric-card info">
-                <div class="metric-value">${data.in_progress}</div>
-                <div class="metric-label">In Progress</div>
-            </div>
-            <div class="metric-card danger">
-                <div class="metric-value">${data.failed}</div>
-                <div class="metric-label">Failed</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-value">${data.total_sessions}</div>
-                <div class="metric-label">Devin Sessions</div>
-            </div>
-        </div>
-
-        <div class="dashboard-grid">
-            <!-- Remediation Rate -->
-            <div class="card">
-                <div class="card-header"><h3>Remediation Rate</h3></div>
-                <div class="remediation-ring">
-                    <svg width="140" height="140">
-                        <circle class="ring-bg" cx="70" cy="70" r="54"/>
-                        <circle class="ring-fill" cx="70" cy="70" r="54"
-                            stroke-dasharray="${circumference}"
-                            stroke-dashoffset="${offset}"/>
-                    </svg>
-                    <div class="ring-text">
-                        <div class="percentage">${data.remediation_rate.toFixed(0)}%</div>
-                        <div class="label">Complete</div>
-                    </div>
-                </div>
-                <div style="display:flex;justify-content:space-around;margin-top:8px">
-                    <div style="text-align:center">
-                        <div style="font-size:20px;font-weight:700;color:var(--accent-green)">${data.remediated}</div>
-                        <div style="font-size:11px;color:var(--text-muted)">FIXED</div>
-                    </div>
-                    <div style="text-align:center">
-                        <div style="font-size:20px;font-weight:700;color:var(--accent-blue)">${data.in_progress}</div>
-                        <div style="font-size:11px;color:var(--text-muted)">IN PROGRESS</div>
-                    </div>
-                    <div style="text-align:center">
-                        <div style="font-size:20px;font-weight:700;color:var(--accent-red)">${data.failed}</div>
-                        <div style="font-size:11px;color:var(--text-muted)">FAILED</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Severity Breakdown -->
-            <div class="card">
-                <div class="card-header"><h3>Severity Breakdown</h3></div>
-                <div style="display:flex;flex-direction:column;gap:12px;margin-top:8px">
-                    ${buildSeverityBar('Critical', data.severity_counts.critical, data.total_findings, 'var(--severity-critical)')}
-                    ${buildSeverityBar('High', data.severity_counts.high, data.total_findings, 'var(--severity-high)')}
-                    ${buildSeverityBar('Medium', data.severity_counts.medium, data.total_findings, 'var(--severity-medium)')}
-                    ${buildSeverityBar('Low', data.severity_counts.low, data.total_findings, 'var(--severity-low)')}
-                </div>
-            </div>
-
-            <!-- Recent Findings -->
-            <div class="card full-width">
-                <div class="card-header">
-                    <h3>All Findings</h3>
-                    <a href="/findings" style="color:var(--accent-blue);font-size:13px;text-decoration:none">View All →</a>
-                </div>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Severity</th>
-                            <th>CWE</th>
-                            <th>Rule</th>
-                            <th>File</th>
-                            <th>Status</th>
-                            <th>PR</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${findings.findings.map(f => `
-                            <tr style="cursor:pointer" onclick="showFindingDetail('${f.finding_id}')">
-                                <td>${severityBadge(f.severity)}</td>
-                                <td><span class="cwe-tag">${f.cwe_id}</span></td>
-                                <td>${f.rule_name}</td>
-                                <td><span class="file-path">${f.file_path.split('/').pop()}:${f.start_line}</span></td>
-                                <td>${statusBadge(f.status)}</td>
-                                <td>${f.pr_url ? '<a href="' + f.pr_url + '" target="_blank" onclick="event.stopPropagation()">View PR</a>' : '—'}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    `;
+    const d = await api('GET', '/summary');
+    document.getElementById('m-total').textContent = d.total_findings;
+    document.getElementById('m-detected').textContent = d.detected || 0;
+    document.getElementById('m-triaged').textContent = d.triaged || 0;
+    document.getElementById('m-inpr').textContent = d.in_pr || 0;
+    document.getElementById('m-verified').textContent = d.verified || 0;
+    document.getElementById('m-failed').textContent = d.failed || 0;
+    document.getElementById('rem-rate').textContent = d.remediation_rate + '%';
+    document.getElementById('rem-bar').style.width = d.remediation_rate + '%';
+    const sb = document.getElementById('severity-breakdown');
+    if (d.severity_counts) {
+        sb.innerHTML = Object.entries(d.severity_counts).map(([k,v]) =>
+            '<span class="sev-chip ' + severityClass(k) + '">' + k + ': ' + v + '</span>'
+        ).join('');
+    }
+    const sc = d.state_counts || {};
+    document.querySelector('#wf-detected .wf-count').textContent = sc.detected || 0;
+    document.querySelector('#wf-triaged .wf-count').textContent = sc.triaged || 0;
+    document.querySelector('#wf-inpr .wf-count').textContent = (sc.in_pr||0) + (sc.pr_commented||0) + (sc.pr_approved||0);
+    document.querySelector('#wf-merged .wf-count').textContent = sc.merged || 0;
+    document.querySelector('#wf-verified .wf-count').textContent = sc.verified || 0;
+    const act = await api('GET', '/activity');
+    const al = document.getElementById('recent-activity');
+    if (act.log && act.log.length > 0) {
+        al.innerHTML = act.log.slice(0, 8).map(e =>
+            '<div class="activity-item"><span class="activity-event">' + escapeHTML(e.event) + '</span><span class="activity-msg">' + escapeHTML(e.message) + '</span></div>'
+        ).join('');
+    } else {
+        al.innerHTML = '<div class="empty-state">No activity yet</div>';
+    }
 }
-
-function buildSeverityBar(label, count, total, color) {
-    const pct = total > 0 ? (count / total) * 100 : 0;
-    return `
-        <div>
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                <span style="font-size:13px;font-weight:500">${label}</span>
-                <span style="font-size:13px;color:var(--text-muted)">${count}</span>
-            </div>
-            <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">
-                <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width 0.5s"></div>
-            </div>
-        </div>
-    `;
-}
-
 loadDashboard();
 </script>
 {% endblock %}
